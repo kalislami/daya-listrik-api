@@ -30,7 +30,6 @@ Before running the API, make sure you have installed the following:
 
 ## Directory Structure
 #### /daya-listrik-api
-│
 ├── /cmd/server/main.go => Contains the main code to run the HTTP server.      
 │    
 ├── /internal   
