@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS energy_records (
+    id SERIAL PRIMARY KEY,
+    date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    usage FLOAT NOT NULL,
+    device VARCHAR(100) NOT NULL
+);

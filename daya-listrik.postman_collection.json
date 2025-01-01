@@ -1,0 +1,127 @@
+{
+	"info": {
+		"_postman_id": "b41c60da-f527-48d1-8f81-4b2726f26cfb",
+		"name": "daya-listrik",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "32581555"
+	},
+	"item": [
+		{
+			"name": "/api/records/add",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"usage\": 20,\r\n    \"device\": \"TV\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/api/records/add",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"records",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "/api/records",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/api/records",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"records"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "/api/records/:id",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/api/records/2",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"records",
+						"2"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "/api/records/:id",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"usage\": 350,\r\n    \"device\": \"Pompa Air\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/api/records/1",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"records",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "/api/records/:id",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/api/records/1",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"records",
+						"1"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

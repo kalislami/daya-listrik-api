@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Layanan untuk PostgreSQL
+  db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: db_daya_listrik
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - app-network
+
+  # Layanan untuk aplikasi Go
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_HOST: ${DB_HOST}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+# Volume untuk menyimpan data PostgreSQL
+volumes:
+  postgres_data:
+
+# Jaringan untuk menghubungkan layanan
+networks:
+  app-network:
+    driver: bridge
