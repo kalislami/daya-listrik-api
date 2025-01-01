@@ -32,8 +32,8 @@ Before running the API, make sure you have installed the following:
 #### /daya-listrik-api
 │
 ├── /cmd   
-│   └── /server   
-│       └── main.go => Contains the main code to run the HTTP server.   
+│   ├── /server   
+│   │    └── main.go => Contains the main code to run the HTTP server.   
 ├── /internal   
 │   ├── /handlers   
 │   │   └── energy_records.go => Handles the logic for HTTP requests.   
