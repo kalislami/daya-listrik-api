@@ -31,9 +31,8 @@ Before running the API, make sure you have installed the following:
 ## Directory Structure
 #### /daya-listrik-api
 │
-├── /cmd   
-│   ├── /server   
-│   │    └── main.go => Contains the main code to run the HTTP server.   
+├── /cmd/server/main.go => Contains the main code to run the HTTP server.      
+│    
 ├── /internal   
 │   ├── /handlers   
 │   │   └── energy_records.go => Handles the logic for HTTP requests.   
@@ -41,8 +40,8 @@ Before running the API, make sure you have installed the following:
 │   │   └── energy_record.go => Contains data structures and types used in the application.   
 │   ├── /repository   
 │   │   └── energy_record_repository.go => Contains code to interact with the database.   
-│   └── /db   
-│       └── postgres.go => Contains the configuration for the PostgreSQL database connection.   
+│   └── /db/postgres.go => Contains the configuration for the PostgreSQL database connection.      
+│       
 ├── /tests   
 │   ├── api_test.go => Contains unit test code for the API.   
 │   ├── api_benchmark_test.go => Contains code to benchmark the API.   
