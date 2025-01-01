@@ -31,25 +31,25 @@ Before running the API, make sure you have installed the following:
 ## Directory Structure
 #### /daya-listrik-api
 │
-├── /cmd
-│   └── /server
+├── /cmd   
+│   └── /server   
 │       └── main.go => Contains the main code to run the HTTP server.   
-├── /internal
-│   ├── /handlers
+├── /internal   
+│   ├── /handlers   
 │   │   └── energy_records.go => Handles the logic for HTTP requests.   
-│   ├── /models
+│   ├── /models   
 │   │   └── energy_record.go => Contains data structures and types used in the application.   
-│   ├── /repository
+│   ├── /repository   
 │   │   └── energy_record_repository.go => Contains code to interact with the database.   
-│   └── /db
+│   └── /db   
 │       └── postgres.go => Contains the configuration for the PostgreSQL database connection.   
-├── /tests  
+├── /tests   
 │   ├── api_test.go => Contains unit test code for the API.   
 │   ├── api_benchmark_test.go => Contains code to benchmark the API.   
 │   ├── mock.go => Mocks the repository for unit tests.   
 ├── /migrations => Scripts for database migration if needed.   
-├── go.mod
-└── go.sum
+├── go.mod   
+└── go.sum   
 
 ## Running Unit Test and Benchmark
 **Run the command below, and it will display unit test and benchmark result:**
