@@ -43,6 +43,9 @@ func Connect() (*sql.DB, error) {
     if err := db.Ping(); err != nil {
         return nil, fmt.Errorf("error pinging database: %v", err)
     }
+
+	RunMigrations(db, "./migrations")
+	
     return db, nil
 }
 
