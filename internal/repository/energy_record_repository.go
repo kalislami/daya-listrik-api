@@ -19,8 +19,8 @@ type EnergyRecordRepository struct {
 }
 
 func (r *EnergyRecordRepository) AddRecord(record *models.EnergyRecord) error {
-	query := `INSERT INTO energy_records (usage, device) VALUES ($1, $2) RETURNING id, date`
-	err := r.DB.QueryRow(query, record.Usage, record.Device).Scan(&record.ID, &record.Date)
+	query := `INSERT INTO energy_records (usage, device, duration) VALUES ($1, $2, $3) RETURNING id, date`
+	err := r.DB.QueryRow(query, record.Usage, record.Device, record.Duration).Scan(&record.ID, &record.Date)
 	if err != nil {
 		return fmt.Errorf("error inserting record: %v", err)
 	}
@@ -29,8 +29,8 @@ func (r *EnergyRecordRepository) AddRecord(record *models.EnergyRecord) error {
 
 func (r *EnergyRecordRepository) GetByIdRecord(id string) (*models.EnergyRecord, error) {
 	record := &models.EnergyRecord{}
-	query := `SELECT id, date, usage, device FROM energy_records WHERE id = $1`
-	err := r.DB.QueryRow(query, id).Scan(&record.ID, &record.Date, &record.Usage, &record.Device)
+	query := `SELECT id, date, usage, device, duration FROM energy_records WHERE id = $1`
+	err := r.DB.QueryRow(query, id).Scan(&record.ID, &record.Date, &record.Usage, &record.Device, &record.Duration)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return &models.EnergyRecord{}, fmt.Errorf("record with ID %s not found", id)
@@ -60,8 +60,8 @@ func (r *EnergyRecordRepository) DeleteRecord(id string) error {
 }
 
 func (r *EnergyRecordRepository) UpdateRecord(record *models.EnergyRecord) error {
-	query := `UPDATE energy_records SET usage=$1, device=$2 WHERE id=$3`
-	result, err := r.DB.Exec(query, record.Usage, record.Device, record.ID)
+	query := `UPDATE energy_records SET usage=$1, device=$2, duration=$3 WHERE id=$4`
+	result, err := r.DB.Exec(query, record.Usage, record.Device, record.Duration, record.ID)
 	if err != nil {
 		return fmt.Errorf("error updating record: %v", err)
 	}
@@ -79,7 +79,7 @@ func (r *EnergyRecordRepository) UpdateRecord(record *models.EnergyRecord) error
 }
 
 func (r *EnergyRecordRepository) GetRecords() ([]models.EnergyRecord, error) {
-	rows, err := r.DB.Query("SELECT id, date, usage, device FROM energy_records")
+	rows, err := r.DB.Query("SELECT id, date, usage, device, duration FROM energy_records")
 	if err != nil {
 		return nil, fmt.Errorf("error fetching records: %w", err)
 	}
@@ -88,13 +88,16 @@ func (r *EnergyRecordRepository) GetRecords() ([]models.EnergyRecord, error) {
 	var records []models.EnergyRecord
 	for rows.Next() {
 		var record models.EnergyRecord
-		if err := rows.Scan(&record.ID, &record.Date, &record.Usage, &record.Device); err != nil {
+		if err := rows.Scan(&record.ID, &record.Date, &record.Usage, &record.Device, &record.Duration); err != nil {
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		records = append(records, record)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error in row iteration: %w", err)
+	}
+	if records == nil {
+		records = []models.EnergyRecord{}
 	}
 	return records, nil
 }

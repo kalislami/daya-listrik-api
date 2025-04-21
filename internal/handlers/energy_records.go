@@ -5,6 +5,7 @@ import (
 	"daya-listrik-api/internal/repository"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,7 +37,7 @@ func validateEnergyRecord(record *models.EnergyRecord) error {
 
 func validateParamId(r *http.Request) (string, error) {
 	id := strings.TrimSpace(mux.Vars(r)["id"])
-	
+
 	if _, err := strconv.Atoi(id); err != nil {
 		return "", fmt.Errorf("invalid param id")
 	}
@@ -48,7 +49,8 @@ func AddRecord(repo repository.EnergyRecordRepositoryInterface) http.HandlerFunc
 	return func(w http.ResponseWriter, r *http.Request) {
 		var record models.EnergyRecord
 		if err := json.NewDecoder(r.Body).Decode(&record); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			log.Printf("Invalid JSON: %v", err)
+			http.Error(w, "Input tidak valid. Pastikan semua nilai benar.", http.StatusBadRequest)
 			return
 		}
 

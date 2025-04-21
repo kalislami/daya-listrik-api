@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -33,6 +34,15 @@ func initializeRouter(dbConn *sql.DB) *mux.Router {
 
 func startServer(router http.Handler) {
 	const addr = ":8080"
+
+	// Bungkus router dengan middleware CORS
+	handler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type"},
+		AllowCredentials: true,
+	}).Handler(router)
+
 	fmt.Printf("Server is running on http://localhost%s\n", addr)
-	log.Fatal(http.ListenAndServe(addr, router))
+	log.Fatal(http.ListenAndServe(addr, handler))
 }

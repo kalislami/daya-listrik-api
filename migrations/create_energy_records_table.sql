@@ -4,3 +4,5 @@ CREATE TABLE IF NOT EXISTS energy_records (
     usage FLOAT NOT NULL,
     device VARCHAR(100) NOT NULL
 );
+
+ALTER TABLE energy_records ADD COLUMN IF NOT EXISTS duration REAL DEFAULT 1;

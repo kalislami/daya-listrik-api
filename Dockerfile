@@ -21,7 +21,7 @@ COPY .env /app/
 WORKDIR /app
 
 # Menambahkan dependensi runtime
-RUN apk --no-cache add ca-certificates
+# RUN apk --no-cache add ca-certificates
 
 EXPOSE 8080
 
