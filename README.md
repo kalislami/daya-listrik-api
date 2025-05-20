@@ -49,24 +49,30 @@ Before running the API, make sure you have installed the following:
 ├── go.mod   
 └── go.sum   
 
-## Running Unit Test and Benchmark
-**Run the command below, and it will display unit test and benchmark result:**
+## Running Benchmark
+**Run the command below, and it will display benchmark result:**
 
    ```bash
-   #run all unit-test and benchmark
-   go test -v -bench . ./tests
-
-   #run all unit-test only
-   go test -v ./tests
-
-   #run all benchmark only
+   #run all benchmark
    go test -v -bench . ./tests -run=^$
-
-   #run spesific unit-test
-   go test -v ./tests -run=unit_test_func_name
 
    #run spesific benchmark
    go test -v -bench=benchmark_func_name ./tests -run=^$
+   ```
+## Running Unit Test Coverage
+**Run the command below, and it will display unit test result:**
+   ```bash
+   #run all unit-test
+   go test ./...
+
+   #run spesific unit-test
+   go test -v ./internal/package_name -run=unit_test_func_name
+
+   #generate coverage file
+   go-acc --ignore=cmd/server,internal/db,internal/models,internal/repository/mocks,tests -o coverage.out ./...
+
+   #generate coverage file.html
+   go tool cover "-html=coverage.out" "-o=coverage.html"
    ```
 
 ## API Endpoints
