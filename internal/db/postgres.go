@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -44,7 +45,9 @@ func Connect() (*sql.DB, error) {
         return nil, fmt.Errorf("error pinging database: %v", err)
     }
 
-	RunMigrations(db, "./migrations")
+	if !fiber.IsChild() {
+		RunMigrations(db, "./migrations")
+	}
 	
     return db, nil
 }

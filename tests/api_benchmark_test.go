@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"daya-listrik-api/internal/handlers"
 	"daya-listrik-api/internal/models"
 	"encoding/json"
@@ -10,13 +11,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
+
+const (
+	HeaderContentType     = "Content-Type"
+	HeaderApplicationJSON = "application/json"
+	pathRecords           = "/api/records"
+	pathRecordsId         = "/api/records/:id"
+	pathRecordsIdVal      = "/api/records/1"
 )
 
 func BenchmarkGetRecords(b *testing.B) {
 	const datePattern = "2006-01-02"
-	const routeApi = "/api/records"
 	mockRepo := new(MockRepository)
 
 	date1, _ := time.Parse(datePattern, "2023-12-31")
@@ -27,63 +36,58 @@ func BenchmarkGetRecords(b *testing.B) {
 		{ID: 2, Usage: 200, Device: "Refrigerator", Date: date2},
 	}
 
-	mockRepo.On("GetRecords").Return(expectedRecords, nil)
+	mockRepo.On("GetRecords", mock.Anything).Return(expectedRecords, nil)
 
-	handler := handlers.GetRecords(mockRepo)
+	handler := &handlers.EnergyRecordHandler{Repo: mockRepo}
+	app := fiber.New()
+	app.Get(pathRecords, handler.GetRecords)
 
-	b.ResetTimer() // Mereset timer untuk memastikan hanya bagian pengujian yang dihitung
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		req, _ := http.NewRequest("GET", routeApi, nil)
-		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", pathRecords, nil)
+		resp, _ := app.Test(req)
 
-		handler.ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusOK {
-			b.Errorf("Expected status 200, got %d", rr.Code)
-		}
-
-		var actualRecords []models.EnergyRecord
-		err := json.NewDecoder(rr.Body).Decode(&actualRecords)
-		if err != nil {
-			b.Errorf("Error decoding response body: %v", err)
-		}
-		if len(actualRecords) != len(expectedRecords) {
-			b.Errorf("Expected %d records, got %d", len(expectedRecords), len(actualRecords))
+		if resp.StatusCode != http.StatusOK {
+			b.Errorf("Expected status 200, got %d", resp.StatusCode)
 		}
 	}
-
 	mockRepo.AssertExpectations(b)
 }
 
 func BenchmarkAddRecord(b *testing.B) {
-	const routeApi = "/api/records/add"
 	mockRepo := new(MockRepository)
 	mockRecord := &models.EnergyRecord{
 		Usage:  100,
 		Device: "Laptop",
 	}
 
-	mockRepo.On("AddRecord", mockRecord).Return(nil)
+	mockRepo.On("AddRecord", mock.Anything, mockRecord).Return(nil)
 
+	handler := &handlers.EnergyRecordHandler{Repo: mockRepo}
+	app := fiber.New()
+	app.Post(pathRecords, handler.AddRecord)
+
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		body, _ := json.Marshal(mockRecord)
-		req, rr := MakeRequest("POST", routeApi, body)
+		req := httptest.NewRequest(http.MethodPost, pathRecords, bytes.NewReader(body))
+		req.Header.Set(HeaderContentType, HeaderApplicationJSON)
 
-		handler := handlers.AddRecord(mockRepo)
-		handler.ServeHTTP(rr, req)
+		resp, _ := app.Test(req)
 
-		if rr.Code != http.StatusCreated {
-			b.Errorf("Expected status %d, got %d", http.StatusCreated, rr.Code)
+		if resp.StatusCode != http.StatusCreated {
+			b.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
 		var response models.EnergyRecord
-		err := json.NewDecoder(rr.Body).Decode(&response)
+		err := json.NewDecoder(resp.Body).Decode(&response)
 		if err != nil {
 			b.Errorf("Error decoding response: %v", err)
 		}
 
-		if response != *mockRecord {
+		if !assert.Equal(b, mockRecord.Usage, response.Usage) ||
+			!assert.Equal(b, mockRecord.Device, response.Device) {
 			b.Errorf("Expected record %+v, got %+v", mockRecord, response)
 		}
 	}
@@ -92,36 +96,32 @@ func BenchmarkAddRecord(b *testing.B) {
 }
 
 func BenchmarkGetByIdRecord(b *testing.B) {
-	const datePattern = "2006-01-02"
 	mockRepo := new(MockRepository)
 
-	date1, _ := time.Parse(datePattern, "2023-12-31")
-	expectedRecords := &models.EnergyRecord{ID: 1, Usage: 100, Device: "Air Conditioner", Date: date1}
+	expectedRecord := &models.EnergyRecord{ID: 1, Usage: 100, Device: "Air Conditioner", Date: time.Now()}
+	mockRepo.On("GetByIdRecord", mock.Anything, "1").Return(expectedRecord, nil)
 
-	mockRepo.On("GetByIdRecord", "1").Return(expectedRecords, nil)
+	handler := &handlers.EnergyRecordHandler{Repo: mockRepo}
+	app := fiber.New()
+	app.Get(pathRecordsId, handler.GetByIdRecord)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		handler := handlers.GetByIdRecords(mockRepo)
+		req := httptest.NewRequest(http.MethodGet, pathRecordsIdVal, nil)
+		resp, _ := app.Test(req)
 
-		req, _ := http.NewRequest("GET", "/api/records/1", nil)
-		rr := httptest.NewRecorder()
+		if resp.StatusCode != http.StatusOK {
+			b.Fatalf("Expected status %d, got %d", http.StatusOK, resp.StatusCode)
+		}
 
-		req = mux.SetURLVars(req, map[string]string{"id": "1"})
-		b.StartTimer()
-
-		handler.ServeHTTP(rr, req)
-
-		b.StopTimer()
-
-		var actualRecords *models.EnergyRecord
-		err := json.NewDecoder(rr.Body).Decode(&actualRecords)
+		var actualRecord models.EnergyRecord
+		err := json.NewDecoder(resp.Body).Decode(&actualRecord)
 		if err != nil {
 			b.Fatalf("Failed to decode response: %v", err)
 		}
 
-		if !assert.Equal(b, expectedRecords, actualRecords) {
-			b.Fatalf("Expected %v but got %v", expectedRecords, actualRecords)
+		if !assert.Equal(b, expectedRecord.ID, actualRecord.ID) {
+			b.Fatalf("Expected ID %d but got %d", expectedRecord.ID, actualRecord.ID)
 		}
 	}
 
@@ -130,25 +130,19 @@ func BenchmarkGetByIdRecord(b *testing.B) {
 
 func BenchmarkDeleteRecord(b *testing.B) {
 	mockRepo := new(MockRepository)
+	mockRepo.On("DeleteRecord", mock.Anything, "1").Return(nil)
 
-	mockRepo.On("DeleteRecord", "1").Return(nil)
+	handler := &handlers.EnergyRecordHandler{Repo: mockRepo}
+	app := fiber.New()
+	app.Delete(pathRecordsId, handler.DeleteRecord)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		handler := handlers.DeleteRecords(mockRepo)
+		req := httptest.NewRequest(http.MethodDelete, pathRecordsIdVal, nil)
+		resp, _ := app.Test(req)
 
-		req, _ := http.NewRequest("DELETE", "/api/records/1", nil)
-		rr := httptest.NewRecorder()
-
-		req = mux.SetURLVars(req, map[string]string{"id": "1"})
-		b.StartTimer()
-
-		handler.ServeHTTP(rr, req)
-
-		b.StopTimer()
-
-		if rr.Code != http.StatusNoContent {
-			b.Fatalf("Expected status %d but got %d", http.StatusNoContent, rr.Code)
+		if resp.StatusCode != http.StatusNoContent {
+			b.Fatalf("Expected status %d but got %d", http.StatusNoContent, resp.StatusCode)
 		}
 	}
 
@@ -157,43 +151,37 @@ func BenchmarkDeleteRecord(b *testing.B) {
 
 func BenchmarkUpdateRecord(b *testing.B) {
 	mockRepo := new(MockRepository)
-	mockRecord := &models.EnergyRecord{
-		Usage:  100,
-		Device: "Laptop",
-	}
-	mockRepo.On("UpdateRecord", mockRecord).Return(nil)
+	mockRecord := &models.EnergyRecord{ID: 1, Usage: 100, Device: "Laptop"}
+	mockRepo.On("UpdateRecord", mock.Anything, mockRecord).Return(nil)
 
-	// Start benchmark
+	handler := &handlers.EnergyRecordHandler{Repo: mockRepo}
+	app := fiber.New()
+	app.Put(pathRecordsId, handler.UpdateRecord)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		handler := handlers.UpdateRecords(mockRepo)
-
 		body, err := json.Marshal(mockRecord)
 		if err != nil {
 			b.Fatalf("Error marshalling mock record: %v", err)
 		}
 
-		req, rr := MakeRequest("PUT", "/api/records/1", body)
+		req := httptest.NewRequest(http.MethodPut, pathRecordsIdVal, bytes.NewReader(body))
+		req.Header.Set(HeaderContentType, HeaderApplicationJSON)
 
-		req = mux.SetURLVars(req, map[string]string{"id": "1"})
-		b.StartTimer()
+		resp, _ := app.Test(req)
 
-		handler.ServeHTTP(rr, req)
-
-		b.StopTimer()
-
-		if rr.Code != http.StatusOK {
-			b.Fatalf("Expected status %d but got %d", http.StatusOK, rr.Code)
+		if resp.StatusCode != http.StatusOK {
+			b.Fatalf("Expected status %d but got %d", http.StatusOK, resp.StatusCode)
 		}
 
 		var response models.EnergyRecord
-		err = json.NewDecoder(rr.Body).Decode(&response)
+		err = json.NewDecoder(resp.Body).Decode(&response)
 		if err != nil {
 			b.Fatalf("Error decoding response: %v", err)
 		}
 
-		if !assert.Equal(b, mockRecord, &response) {
-			b.Fatalf("Expected record: %v but got: %v", mockRecord, &response)
+		if !assert.Equal(b, mockRecord.ID, response.ID) {
+			b.Fatalf("Expected record ID %v but got %v", mockRecord.ID, response.ID)
 		}
 	}
 

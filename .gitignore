@@ -27,3 +27,7 @@ go.work.sum
 # exclude coverage
 coverage
 coverage.*
+
+# private notes
+fiber.md
+go-expert.md

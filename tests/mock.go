@@ -1,11 +1,9 @@
 package test
 
 import (
-	"bytes"
+	"context"
 	"daya-listrik-api/internal/models"
-	"net/http"
-	"net/http/httptest"
-	"testing"
+	"fmt"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -14,40 +12,30 @@ type MockRepository struct {
 	mock.Mock
 }
 
-func (m *MockRepository) AddRecord(record *models.EnergyRecord) error {
-	args := m.Called(record)
+func (m *MockRepository) AddRecord(ctx context.Context, record *models.EnergyRecord) error {
+	args := m.Called(ctx, record)
 	return args.Error(0)
 }
 
-func (m *MockRepository) GetRecords() ([]models.EnergyRecord, error) {
-	args := m.Called()
+func (m *MockRepository) GetRecords(ctx context.Context) ([]models.EnergyRecord, error) {
+	args := m.Called(ctx)
 	return args.Get(0).([]models.EnergyRecord), args.Error(1)
 }
 
-func (m *MockRepository) DeleteRecord(id string) error {
-	args := m.Called(id)
+func (m *MockRepository) DeleteRecord(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockRepository) UpdateRecord(record *models.EnergyRecord) error {
-	args := m.Called(record)
-	return args.Error(0)
-}
-
-func (m *MockRepository) GetByIdRecord(id string) (*models.EnergyRecord, error) {
-	args := m.Called(id)
-	return args.Get(0).(*models.EnergyRecord), args.Error(1)
-}
-
-func MakeRequest(method, url string, body []byte) (*http.Request, *httptest.ResponseRecorder) {
-	req, _ := http.NewRequest(method, url, bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	return req, rr
-}
-
-func AssertStatusCode(t *testing.T, rr *httptest.ResponseRecorder, expected int) {
-	if status := rr.Code; status != expected {
-		t.Errorf("Expected status code %v, got %v", expected, status)
+func (m *MockRepository) UpdateRecord(ctx context.Context, record *models.EnergyRecord) error {
+	if record.ID == 0 {
+		return fmt.Errorf("record ID is required for update")
 	}
+	args := m.Called(ctx, record)
+	return args.Error(0)
+}
+
+func (m *MockRepository) GetByIdRecord(ctx context.Context, id string) (*models.EnergyRecord, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(*models.EnergyRecord), args.Error(1)
 }

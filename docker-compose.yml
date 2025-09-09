@@ -25,6 +25,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       DB_HOST: ${DB_HOST}
+      PREFORK_ENABLED: ${PREFORK_ENABLED}
     ports:
       - "8080:8080"
     depends_on:

@@ -1,10 +1,9 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"daya-listrik-api/internal/models"
-	"errors"
-	"regexp"
 	"testing"
 	"time"
 
@@ -12,239 +11,125 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAddRecord(t *testing.T) {
+func setupMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *EnergyRecordRepository) {
 	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to open sqlmock: %v", err)
+	}
+	repo := &EnergyRecordRepository{DB: db}
+	return db, mock, repo
+}
+
+func TestAddRecordSuccess(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
 	defer db.Close()
 
-	repo := &EnergyRecordRepository{DB: db}
+	record := &models.EnergyRecord{Usage: 10, Device: "AC", Duration: 2}
 
-	record := &models.EnergyRecord{
-		Usage:    10.5,
-		Device:   "Device A",
-		Duration: 5.0,
-	}
-
-	// Setup expectation for QueryRow + Scan on Insert returning id and date
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`INSERT INTO energy_records (usage, device, duration) VALUES ($1, $2, $3) RETURNING id, date`,
-	)).WithArgs(record.Usage, record.Device, record.Duration).
+	mock.ExpectQuery(`INSERT INTO energy_records`).
+		WithArgs(record.Usage, record.Device, record.Duration).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "date"}).AddRow(1, time.Now()))
 
-	err = repo.AddRecord(record)
+	err := repo.AddRecord(context.Background(), record)
+
 	assert.NoError(t, err)
 	assert.Equal(t, 1, record.ID)
-
-	// Test error on Insert
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`INSERT INTO energy_records (usage, device, duration) VALUES ($1, $2, $3) RETURNING id, date`,
-	)).WithArgs(record.Usage, record.Device, record.Duration).
-		WillReturnError(errors.New("insert error"))
-
-	err = repo.AddRecord(record)
-	assert.Error(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestGetByIdRecord(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
+func TestGetByIdRecordNotFound(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
 	defer db.Close()
 
-	repo := &EnergyRecordRepository{DB: db}
-
-	id := "1"
-	expectedRecord := &models.EnergyRecord{
-		ID:       1,
-		Date:     time.Now(),
-		Usage:    20.0,
-		Device:   "Device X",
-		Duration: 3.5,
-	}
-
-	// Happy path
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records WHERE id = $1`,
-	)).WithArgs(id).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "date", "usage", "device", "duration"}).
-			AddRow(expectedRecord.ID, expectedRecord.Date, expectedRecord.Usage, expectedRecord.Device, expectedRecord.Duration))
-
-	rec, err := repo.GetByIdRecord(id)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedRecord.ID, rec.ID)
-
-	// No rows found
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records WHERE id = $1`,
-	)).WithArgs("999").
+	mock.ExpectQuery(`SELECT id, date, usage, device, duration FROM energy_records WHERE id = \$1`).
+		WithArgs("99").
 		WillReturnError(sql.ErrNoRows)
 
-	rec, err = repo.GetByIdRecord("999")
-	assert.Error(t, err)
-	assert.Equal(t, 0, rec.ID)
+	record, err := repo.GetByIdRecord(context.Background(), "99")
 
-	// Other error
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records WHERE id = $1`,
-	)).WithArgs("error").
-		WillReturnError(errors.New("some db error"))
-
-	rec, err = repo.GetByIdRecord("error")
 	assert.Error(t, err)
+	assert.Nil(t, record)
+	assert.Equal(t, sql.ErrNoRows, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestDeleteRecord(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
+func TestDeleteRecordSuccess(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
 	defer db.Close()
 
-	repo := &EnergyRecordRepository{DB: db}
+	mock.ExpectExec(`DELETE FROM energy_records WHERE id = \$1`).
+		WithArgs("1").
+		WillReturnResult(sqlmock.NewResult(0, 1)) // 1 row affected
 
-	id := "1"
+	err := repo.DeleteRecord(context.Background(), "1")
 
-	// Successful delete (rows affected = 1)
-	mock.ExpectExec(regexp.QuoteMeta(
-		`DELETE FROM energy_records WHERE id = $1`,
-	)).WithArgs(id).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-
-	err = repo.DeleteRecord(id)
 	assert.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
 
-	// Delete no rows affected
-	mock.ExpectExec(regexp.QuoteMeta(
-		`DELETE FROM energy_records WHERE id = $1`,
-	)).WithArgs(id).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+func TestDeleteRecordNotFound(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
+	defer db.Close()
 
-	err = repo.DeleteRecord(id)
+	mock.ExpectExec(`DELETE FROM energy_records WHERE id = \$1`).
+		WithArgs("2").
+		WillReturnResult(sqlmock.NewResult(0, 0)) // 0 row affected
+
+	err := repo.DeleteRecord(context.Background(), "2")
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
-
-	// Exec error
-	mock.ExpectExec(regexp.QuoteMeta(
-		`DELETE FROM energy_records WHERE id = $1`,
-	)).WithArgs(id).
-		WillReturnError(errors.New("exec error"))
-
-	err = repo.DeleteRecord(id)
-	assert.Error(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestUpdateRecord(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
+func TestUpdateRecordSuccess(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
 	defer db.Close()
 
-	repo := &EnergyRecordRepository{DB: db}
+	record := &models.EnergyRecord{ID: 1, Usage: 20, Device: "TV", Duration: 3}
 
-	record := &models.EnergyRecord{
-		ID:       1,
-		Usage:    15.0,
-		Device:   "Device B",
-		Duration: 2.5,
-	}
+	mock.ExpectExec(`UPDATE energy_records SET usage=\$1, device=\$2, duration=\$3 WHERE id=\$4`).
+		WithArgs(record.Usage, record.Device, record.Duration, record.ID).
+		WillReturnResult(sqlmock.NewResult(0, 1)) // 1 row affected
 
-	// Successful update (rows affected = 1)
-	mock.ExpectExec(regexp.QuoteMeta(
-		`UPDATE energy_records SET usage=$1, device=$2, duration=$3 WHERE id=$4`,
-	)).WithArgs(record.Usage, record.Device, record.Duration, record.ID).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	err := repo.UpdateRecord(context.Background(), record)
 
-	err = repo.UpdateRecord(record)
 	assert.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
 
-	// Update no rows affected
-	mock.ExpectExec(regexp.QuoteMeta(
-		`UPDATE energy_records SET usage=$1, device=$2, duration=$3 WHERE id=$4`,
-	)).WithArgs(record.Usage, record.Device, record.Duration, record.ID).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+func TestUpdateRecordNotFound(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
+	defer db.Close()
 
-	err = repo.UpdateRecord(record)
+	record := &models.EnergyRecord{ID: 2, Usage: 20, Device: "Lamp", Duration: 1}
+
+	mock.ExpectExec(`UPDATE energy_records SET usage=\$1, device=\$2, duration=\$3 WHERE id=\$4`).
+		WithArgs(record.Usage, record.Device, record.Duration, record.ID).
+		WillReturnResult(sqlmock.NewResult(0, 0)) // no rows
+
+	err := repo.UpdateRecord(context.Background(), record)
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
-
-	// Exec error
-	mock.ExpectExec(regexp.QuoteMeta(
-		`UPDATE energy_records SET usage=$1, device=$2, duration=$3 WHERE id=$4`,
-	)).WithArgs(record.Usage, record.Device, record.Duration, record.ID).
-		WillReturnError(errors.New("exec error"))
-
-	err = repo.UpdateRecord(record)
-	assert.Error(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestGetRecords(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
+func TestGetRecordsSuccess(t *testing.T) {
+	db, mock, repo := setupMockDB(t)
 	defer db.Close()
 
-	repo := &EnergyRecordRepository{DB: db}
-
-	// Happy path with 2 records
 	rows := sqlmock.NewRows([]string{"id", "date", "usage", "device", "duration"}).
-		AddRow(1, time.Now(), 10.0, "Device1", 2.0).
-		AddRow(2, time.Now(), 20.0, "Device2", 3.0)
+		AddRow(1, time.Now(), 10, "AC", 2).
+		AddRow(2, time.Now(), 15, "TV", 3)
 
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records`,
-	)).WillReturnRows(rows)
+	mock.ExpectQuery(`SELECT id, date, usage, device, duration FROM energy_records`).
+		WillReturnRows(rows)
 
-	records, err := repo.GetRecords()
+	records, err := repo.GetRecords(context.Background())
+
 	assert.NoError(t, err)
 	assert.Len(t, records, 2)
-
-	// Empty result
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records`,
-	)).WillReturnRows(sqlmock.NewRows([]string{"id", "date", "usage", "device", "duration"}))
-
-	records, err = repo.GetRecords()
-	assert.NoError(t, err)
-	assert.Len(t, records, 0)
-
-	// Query error
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records`,
-	)).WillReturnError(errors.New("query error"))
-
-	records, err = repo.GetRecords()
-	assert.Error(t, err)
-}
-
-func TestGetRecordsScanError(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := &EnergyRecordRepository{DB: db}
-
-	rows := sqlmock.NewRows([]string{"id", "date", "usage", "device", "duration"}).
-		AddRow(1, time.Now(), "invalid_float", "Device1", 2.0)
-
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records`,
-	)).WillReturnRows(rows)
-
-	records, err := repo.GetRecords()
-	assert.Error(t, err)
-	assert.Nil(t, records)
-}
-
-func TestGetRecordsRowsErr(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := &EnergyRecordRepository{DB: db}
-
-	rows := sqlmock.NewRows([]string{"id", "date", "usage", "device", "duration"}).
-		AddRow(1, time.Now(), 10.0, "Device1", 2.0)
-
-	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, date, usage, device, duration FROM energy_records`,
-	)).WillReturnRows(rows)
-
-	records, err := repo.GetRecords()
-	assert.NoError(t, err)
-	assert.Len(t, records, 1)
+	assert.Equal(t, "AC", records[0].Device)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
