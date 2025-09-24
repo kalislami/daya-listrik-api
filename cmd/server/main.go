@@ -13,11 +13,17 @@ import (
 
 func main() {
 	// Koneksi DB
-	dbConn, err := db.Connect()
+	dbConn, err := db.LoadConnectionGorm()
 	if err != nil {
 		log.Fatal("Database connection error: ", err)
 	}
-	defer dbConn.Close()
+
+	// Pastikan close connection ketika exit
+	sqlDB, err := dbConn.DB()
+	if err != nil {
+		log.Fatal("Failed to get sql.DB from gorm.DB: ", err)
+	}
+	defer sqlDB.Close()
 
 	// Inisialisasi Fiber
 	app := fiber.New(fiber.Config{

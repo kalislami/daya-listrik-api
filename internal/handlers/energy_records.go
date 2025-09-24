@@ -3,6 +3,7 @@ package handlers
 import (
 	"daya-listrik-api/internal/models"
 	"daya-listrik-api/internal/repository"
+	"daya-listrik-api/internal/utils"
 	"fmt"
 	"log"
 	"strconv"
@@ -108,6 +109,9 @@ func (h *EnergyRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 	}
 
 	if err := h.Repo.UpdateRecord(c.Context(), &record); err != nil {
+		if appErr, ok := err.(*utils.AppError); ok {
+			return c.Status(appErr.Code).JSON(fiber.Map{"error": appErr.Message})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
@@ -122,6 +126,9 @@ func (h *EnergyRecordHandler) GetByIdRecord(c *fiber.Ctx) error {
 
 	record, err := h.Repo.GetByIdRecord(c.Context(), id)
 	if err != nil {
+		if appErr, ok := err.(*utils.AppError); ok {
+			return c.Status(appErr.Code).JSON(fiber.Map{"error": appErr.Message})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 

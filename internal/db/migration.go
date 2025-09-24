@@ -6,51 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-
-	"github.com/gofiber/fiber/v2"
-	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 )
-
-type DatabaseConfig struct {
-	Host     string
-	User     string
-	Password string
-	Name     string
-}
-
-func LoadDatabaseConfig() *DatabaseConfig {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
-
-	return &DatabaseConfig{
-		Host:     os.Getenv("DB_HOST"),
-		User:     os.Getenv("DB_USER"),
-		Password: os.Getenv("DB_PASSWORD"),
-		Name:     os.Getenv("DB_NAME"),
-	}
-}
-
-func Connect() (*sql.DB, error) {
-	config := LoadDatabaseConfig()
-    connStr := fmt.Sprintf("user=%s password=%s dbname=%s host=%s sslmode=disable",
-        config.User, config.Password, config.Name, config.Host)
-    db, err := sql.Open("postgres", connStr)
-    if err != nil {
-        return nil, fmt.Errorf("error connecting to database: %v", err)
-    }
-    if err := db.Ping(); err != nil {
-        return nil, fmt.Errorf("error pinging database: %v", err)
-    }
-
-	if !fiber.IsChild() {
-		RunMigrations(db, "./migrations")
-	}
-	
-    return db, nil
-}
 
 // RunMigrations menjalankan semua migrasi dari folder yang ditentukan
 func RunMigrations(db *sql.DB, migrationsDir string) error {
