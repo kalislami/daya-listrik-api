@@ -22,7 +22,7 @@ func (m *MockRepository) GetRecords(ctx context.Context) ([]models.EnergyRecord,
 	return args.Get(0).([]models.EnergyRecord), args.Error(1)
 }
 
-func (m *MockRepository) DeleteRecord(ctx context.Context, id string) error {
+func (m *MockRepository) DeleteRecord(ctx context.Context, id int) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
@@ -35,7 +35,7 @@ func (m *MockRepository) UpdateRecord(ctx context.Context, record *models.Energy
 	return args.Error(0)
 }
 
-func (m *MockRepository) GetByIdRecord(ctx context.Context, id string) (*models.EnergyRecord, error) {
+func (m *MockRepository) GetByIdRecord(ctx context.Context, id int) (*models.EnergyRecord, error) {
 	args := m.Called(ctx, id)
 	return args.Get(0).(*models.EnergyRecord), args.Error(1)
 }

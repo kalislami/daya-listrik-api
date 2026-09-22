@@ -2,229 +2,190 @@ package handlers
 
 import (
 	"context"
+	"daya-listrik-api/internal/models"
+	"daya-listrik-api/internal/repository"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"daya-listrik-api/internal/models"
-
 	"github.com/gofiber/fiber/v2"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-type MockEnergyRecordRepo struct {
-	mock.Mock
+type mockRepo struct{ mock.Mock }
+
+func (m *mockRepo) AddRecord(ctx context.Context, r *models.EnergyRecord) error {
+	return m.Called(ctx, r).Error(0)
 }
-
-const (
-	pathWithId            = "/api/records/1"
-	HeaderContentType     = "Content-Type"
-	HeaderApplicationJSON = "application/json"
-)
-
-func (m *MockEnergyRecordRepo) AddRecord(ctx context.Context, record *models.EnergyRecord) error {
-	args := m.Called(ctx, record)
-	return args.Error(0)
+func (m *mockRepo) GetRecords(ctx context.Context) ([]models.EnergyRecord, error) {
+	a := m.Called(ctx)
+	return a.Get(0).([]models.EnergyRecord), a.Error(1)
 }
-
-func (m *MockEnergyRecordRepo) GetRecords(ctx context.Context) ([]models.EnergyRecord, error) {
-	args := m.Called(ctx)
-	return args.Get(0).([]models.EnergyRecord), args.Error(1)
-}
-
-func (m *MockEnergyRecordRepo) DeleteRecord(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *MockEnergyRecordRepo) UpdateRecord(ctx context.Context, record *models.EnergyRecord) error {
-	if record.ID == 0 {
-		return fmt.Errorf("record ID is required for update")
+func (m *mockRepo) GetByIdRecord(ctx context.Context, id int) (*models.EnergyRecord, error) {
+	a := m.Called(ctx, id)
+	if a.Get(0) == nil {
+		return nil, a.Error(1)
 	}
-	args := m.Called(ctx, record)
-	return args.Error(0)
+	return a.Get(0).(*models.EnergyRecord), a.Error(1)
+}
+func (m *mockRepo) UpdateRecord(ctx context.Context, r *models.EnergyRecord) error {
+	return m.Called(ctx, r).Error(0)
+}
+func (m *mockRepo) DeleteRecord(ctx context.Context, id int) error {
+	return m.Called(ctx, id).Error(0)
 }
 
-func (m *MockEnergyRecordRepo) GetByIdRecord(ctx context.Context, id string) (*models.EnergyRecord, error) {
-	args := m.Called(ctx, id)
-	return args.Get(0).(*models.EnergyRecord), args.Error(1)
-}
-
-// Helper untuk setup Fiber app + handler
-func setupTestApp() (*fiber.App, *MockEnergyRecordRepo) {
+func testApp() (*fiber.App, *mockRepo) {
 	app := fiber.New()
-	mockRepo := new(MockEnergyRecordRepo)
-	handler := &EnergyRecordHandler{Repo: mockRepo}
-	InitializeRoutes(app, handler)
-	return app, mockRepo
+	repo := new(mockRepo)
+	InitializeRoutes(app, &EnergyRecordHandler{Repo: repo})
+	return app, repo
 }
 
-func TestAddRecordSuccess(t *testing.T) {
-	app, mockRepo := setupTestApp()
-
-	payload := `{"usage": 10, "device": "AC"}`
-	record := &models.EnergyRecord{Usage: 10, Device: "AC"}
-
-	mockRepo.On("AddRecord", mock.Anything, record).Return(nil)
-
-	req := httptest.NewRequest("POST", "/api/records/add", strings.NewReader(payload))
-	req.Header.Set(HeaderContentType, HeaderApplicationJSON)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-
-	var resRecord models.EnergyRecord
-	json.NewDecoder(resp.Body).Decode(&resRecord)
-	assert.Equal(t, record.Usage, resRecord.Usage)
-	assert.Equal(t, record.Device, resRecord.Device)
-}
-
-func TestAddRecordInvalidBody(t *testing.T) {
-	app, _ := setupTestApp()
-
-	payload := `{"usage": -5, "device": ""}` // invalid
-
-	req := httptest.NewRequest("POST", "/api/records/add", strings.NewReader(payload))
-	req.Header.Set(HeaderContentType, HeaderApplicationJSON)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-}
-
-func TestGetRecordsSuccess(t *testing.T) {
-	app, mockRepo := setupTestApp()
-
-	mockData := []models.EnergyRecord{
-		{ID: 1, Usage: 10, Device: "AC"},
-		{ID: 2, Usage: 5, Device: "Fan"},
+func call(t *testing.T, app *fiber.App, method, path, body string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	mockRepo.On("GetRecords", mock.Anything).Return(mockData, nil)
-
-	req := httptest.NewRequest("GET", "/api/records", nil)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var records []models.EnergyRecord
-	json.NewDecoder(resp.Body).Decode(&records)
-	assert.Len(t, records, 2)
-	assert.Equal(t, "AC", records[0].Device)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
 }
 
-func TestDeleteRecordInvalidId(t *testing.T) {
-	app, _ := setupTestApp()
-
-	req := httptest.NewRequest("DELETE", "/api/records/abc", nil)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+func checkError(t *testing.T, resp *http.Response, status int, code string) {
+	t.Helper()
+	require.Equal(t, status, resp.StatusCode)
+	var payload apiError
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	require.Equal(t, code, payload.Error.Code)
+	require.NotEmpty(t, payload.Error.Message)
+	require.NotContains(t, payload.Error.Message, "database secret detail")
 }
 
-func TestDeleteRecordSuccess(t *testing.T) {
-	app, mockRepo := setupTestApp()
-
-	mockRepo.On("DeleteRecord", mock.Anything, "1").Return(nil)
-
-	req := httptest.NewRequest("DELETE", pathWithId, nil)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+func TestCreateRecord(t *testing.T) {
+	valid := `{"device":"  AC  ","usage":100,"duration":2}`
+	t.Run("success", func(t *testing.T) {
+		app, repo := testApp()
+		repo.On("AddRecord", mock.Anything, mock.MatchedBy(func(r *models.EnergyRecord) bool {
+			return r.Device == "AC" && r.Usage == 100 && r.Duration == 2 && r.ID == 0
+		})).Run(func(a mock.Arguments) { a.Get(1).(*models.EnergyRecord).ID = 7 }).Return(nil).Once()
+		resp := call(t, app, "POST", "/api/records", valid)
+		require.Equal(t, 201, resp.StatusCode)
+		var record models.EnergyRecord
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&record))
+		require.Equal(t, 7, record.ID)
+		require.Equal(t, "AC", record.Device)
+		repo.AssertExpectations(t)
+	})
+	for name, body := range map[string]string{
+		"invalid JSON":     `{`,
+		"blank device":     `{"device":"   ","usage":100,"duration":2}`,
+		"zero usage":       `{"device":"AC","usage":0,"duration":2}`,
+		"negative usage":   `{"device":"AC","usage":-1,"duration":2}`,
+		"invalid duration": `{"device":"AC","usage":100,"duration":0}`,
+		"server field":     `{"id":1,"device":"AC","usage":100,"duration":2}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, _ := testApp()
+			checkError(t, call(t, app, "POST", "/api/records", body), 400, "VALIDATION_ERROR")
+		})
+	}
+	t.Run("repository error", func(t *testing.T) {
+		app, repo := testApp()
+		repo.On("AddRecord", mock.Anything, mock.Anything).Return(errors.New("database secret detail")).Once()
+		resp := call(t, app, "POST", "/api/records", valid)
+		checkError(t, resp, 500, "INTERNAL_SERVER_ERROR")
+	})
 }
 
-func TestGetByIdRecordNotFound(t *testing.T) {
-	app, mockRepo := setupTestApp()
-
-	mockRepo.On("GetByIdRecord", mock.Anything, "1").Return((*models.EnergyRecord)(nil), errors.New("not found"))
-
-	req := httptest.NewRequest("GET", pathWithId, nil)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+func TestGetRecord(t *testing.T) {
+	for _, id := range []string{"abc", "0", "-1"} {
+		t.Run("invalid "+id, func(t *testing.T) {
+			app, _ := testApp()
+			checkError(t, call(t, app, "GET", "/api/records/"+id, ""), 400, "INVALID_ID")
+		})
+	}
+	for name, repoErr := range map[string]error{"not found": repository.ErrRecordNotFound, "database error": errors.New("database secret detail")} {
+		t.Run(name, func(t *testing.T) {
+			app, repo := testApp()
+			repo.On("GetByIdRecord", mock.Anything, 1).Return(nil, repoErr).Once()
+			status, code := 404, "RECORD_NOT_FOUND"
+			if name == "database error" {
+				status, code = 500, "INTERNAL_SERVER_ERROR"
+			}
+			checkError(t, call(t, app, "GET", "/api/records/1", ""), status, code)
+		})
+	}
+	app, repo := testApp()
+	repo.On("GetByIdRecord", mock.Anything, 1).Return(&models.EnergyRecord{ID: 1, Device: "AC"}, nil).Once()
+	resp := call(t, app, "GET", "/api/records/1", "")
+	require.Equal(t, 200, resp.StatusCode)
 }
 
-func TestGetByIdRecordSuccess(t *testing.T) {
-	app, mockRepo := setupTestApp()
-
-	mockRecord := &models.EnergyRecord{ID: 1, Usage: 15, Device: "Heater"}
-	mockRepo.On("GetByIdRecord", mock.Anything, "1").Return(mockRecord, nil)
-
-	req := httptest.NewRequest("GET", pathWithId, nil)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var record models.EnergyRecord
-	json.NewDecoder(resp.Body).Decode(&record)
-	assert.Equal(t, "Heater", record.Device)
+func TestUpdateRecord(t *testing.T) {
+	valid := `{"device":"AC","usage":100,"duration":2}`
+	app, repo := testApp()
+	repo.On("UpdateRecord", mock.Anything, mock.MatchedBy(func(r *models.EnergyRecord) bool { return r.ID == 1 && r.Duration == 2 })).Return(nil).Once()
+	require.Equal(t, 200, call(t, app, "PUT", "/api/records/1", valid).StatusCode)
+	for _, tc := range []struct{ path, body, code string }{
+		{"/api/records/0", valid, "INVALID_ID"},
+		{"/api/records/1", `{`, "VALIDATION_ERROR"},
+		{"/api/records/1", `{"device":"AC","usage":1,"duration":-2}`, "VALIDATION_ERROR"},
+	} {
+		app, _ := testApp()
+		checkError(t, call(t, app, "PUT", tc.path, tc.body), 400, tc.code)
+	}
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{repository.ErrRecordNotFound, 404, "RECORD_NOT_FOUND"},
+		{errors.New("db failed"), 500, "INTERNAL_SERVER_ERROR"},
+	} {
+		app, repo := testApp()
+		repo.On("UpdateRecord", mock.Anything, mock.Anything).Return(tc.err).Once()
+		checkError(t, call(t, app, "PUT", "/api/records/1", valid), tc.status, tc.code)
+	}
 }
 
-func TestUpdateRecordSuccess(t *testing.T) {
-	app := fiber.New()
-	mockRepo := new(MockEnergyRecordRepo)
-	handler := &EnergyRecordHandler{Repo: mockRepo}
-	InitializeRoutes(app, handler)
-
-	payload := `{"usage": 10, "device": "AC"}`
-	record := &models.EnergyRecord{ID: 1, Usage: 10, Device: "AC"}
-
-	mockRepo.On("UpdateRecord", mock.Anything, record).Return(nil)
-
-	req := httptest.NewRequest("PUT", pathWithId, strings.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var resRecord models.EnergyRecord
-	json.NewDecoder(resp.Body).Decode(&resRecord)
-	assert.Equal(t, record.ID, resRecord.ID)
-	assert.Equal(t, record.Device, resRecord.Device)
+func TestDeleteRecord(t *testing.T) {
+	app, repo := testApp()
+	repo.On("DeleteRecord", mock.Anything, 1).Return(nil).Once()
+	require.Equal(t, 204, call(t, app, "DELETE", "/api/records/1", "").StatusCode)
+	app, _ = testApp()
+	checkError(t, call(t, app, "DELETE", "/api/records/-1", ""), 400, "INVALID_ID")
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{repository.ErrRecordNotFound, 404, "RECORD_NOT_FOUND"},
+		{errors.New("db failed"), 500, "INTERNAL_SERVER_ERROR"},
+	} {
+		app, repo := testApp()
+		repo.On("DeleteRecord", mock.Anything, 1).Return(tc.err).Once()
+		checkError(t, call(t, app, "DELETE", "/api/records/1", ""), tc.status, tc.code)
+	}
 }
 
-func TestUpdateRecordInvalidParamId(t *testing.T) {
-	app, _ := setupTestApp()
-
-	payload := `{"usage": 10, "device": "AC"}`
-	req := httptest.NewRequest("PUT", "/api/records/abc", strings.NewReader(payload))
-	req.Header.Set(HeaderContentType, HeaderApplicationJSON)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-}
-
-func TestUpdateRecordInvalidBody(t *testing.T) {
-	app := fiber.New()
-	mockRepo := new(MockEnergyRecordRepo)
-	handler := &EnergyRecordHandler{Repo: mockRepo}
-	InitializeRoutes(app, handler)
-
-	payload := `{"usage": -5, "device": ""}` // invalid usage/device
-	req := httptest.NewRequest("PUT", pathWithId, strings.NewReader(payload))
-	req.Header.Set(HeaderContentType, HeaderApplicationJSON)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-}
-
-func TestUpdateRecordRepoError(t *testing.T) {
-	app := fiber.New()
-	mockRepo := new(MockEnergyRecordRepo)
-	handler := &EnergyRecordHandler{Repo: mockRepo}
-	InitializeRoutes(app, handler)
-
-	payload := `{"usage": 10, "device": "AC"}`
-	record := &models.EnergyRecord{ID: 1, Usage: 10, Device: "AC"}
-
-	mockRepo.On("UpdateRecord", mock.Anything, record).Return(fmt.Errorf("repo error"))
-
-	req := httptest.NewRequest("PUT", pathWithId, strings.NewReader(payload))
-	req.Header.Set(HeaderContentType, HeaderApplicationJSON)
-	resp, _ := app.Test(req)
-
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+func TestListRecords(t *testing.T) {
+	for _, records := range [][]models.EnergyRecord{{{ID: 1}}, {}} {
+		app, repo := testApp()
+		repo.On("GetRecords", mock.Anything).Return(records, nil).Once()
+		resp := call(t, app, "GET", "/api/records", "")
+		require.Equal(t, 200, resp.StatusCode)
+		var got []models.EnergyRecord
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+		require.Len(t, got, len(records))
+	}
+	app, repo := testApp()
+	repo.On("GetRecords", mock.Anything).Return([]models.EnergyRecord(nil), errors.New("db failed")).Once()
+	checkError(t, call(t, app, "GET", "/api/records", ""), 500, "INTERNAL_SERVER_ERROR")
 }

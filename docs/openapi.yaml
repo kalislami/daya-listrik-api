@@ -1,0 +1,188 @@
+openapi: 3.0.3
+info:
+  title: Daya Listrik API
+  description: REST API for managing household electricity usage records.
+  version: "1.0"
+paths:
+  /api/records:
+    get:
+      summary: List energy records
+      responses:
+        '200':
+          description: Records, or an empty array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EnergyRecord'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: Create an energy record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordRequest'
+      responses:
+        '201':
+          description: Created record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnergyRecord'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/records/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Positive integer record ID
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      summary: Get an energy record
+      responses:
+        '200':
+          description: Record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnergyRecord'
+        '400':
+          $ref: '#/components/responses/InvalidID'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      summary: Replace an energy record's editable fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordRequest'
+      responses:
+        '200':
+          description: Updated record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnergyRecord'
+        '400':
+          description: Invalid ID or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      summary: Delete an energy record
+      responses:
+        '204':
+          description: Deleted; no response body
+        '400':
+          $ref: '#/components/responses/InvalidID'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  schemas:
+    RecordRequest:
+      type: object
+      additionalProperties: false
+      required: [device, usage, duration]
+      properties:
+        device:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Device name, trimmed of surrounding whitespace
+          example: Air Conditioner
+        usage:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          description: Positive usage value; the existing API does not define a unit
+          example: 100
+        duration:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          description: Positive duration value; the existing API does not define a unit
+          example: 2
+    EnergyRecord:
+      type: object
+      required: [id, date, device, usage, duration]
+      properties:
+        id:
+          type: integer
+          example: 1
+        date:
+          type: string
+          format: date-time
+          description: Server generated creation timestamp
+        device:
+          type: string
+          description: Device name
+          example: Air Conditioner
+        usage:
+          type: number
+          format: double
+          description: Positive usage value; unit is not defined by the existing API
+          example: 100
+        duration:
+          type: number
+          format: double
+          description: Positive duration value; unit is not defined by the existing API
+          example: 2
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: RECORD_NOT_FOUND
+            message:
+              type: string
+              example: Energy record not found
+  responses:
+    InvalidID:
+      description: ID must be a positive integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Invalid JSON or record fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Record not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -1,28 +1,14 @@
-# Stage pertama: Build Go application
-FROM golang:1.24.3-alpine AS builder
-
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
-
 COPY go.mod go.sum ./
-RUN go mod tidy
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /app/server ./cmd/server
 
-COPY . ./
-
-RUN go build -o app cmd/server/main.go
-
-# Stage kedua: Menjalankan aplikasi Go
-FROM alpine:3.17
-
-# Menyalin aplikasi Go yang telah dibangun dari stage builder
-COPY --from=builder /app/app /app/
-COPY --from=builder /app/migrations /app/migrations
-COPY .env /app/
-
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
 WORKDIR /app
-
-# Menambahkan dependensi runtime
-# RUN apk --no-cache add ca-certificates
-
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/docs/openapi.yaml ./docs/openapi.yaml
 EXPOSE 8080
-
-CMD ["./app"]
+CMD ["./server"]

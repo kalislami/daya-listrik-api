@@ -8,13 +8,15 @@ import (
 	"fmt"
 )
 
-type EnergyRecordRepositoryInterface interface {
+type EnergyRecordStore interface {
 	AddRecord(ctx context.Context, record *models.EnergyRecord) error
-	GetByIdRecord(ctx context.Context, id string) (*models.EnergyRecord, error)
-	DeleteRecord(ctx context.Context, id string) error
+	GetByIdRecord(ctx context.Context, id int) (*models.EnergyRecord, error)
+	DeleteRecord(ctx context.Context, id int) error
 	UpdateRecord(ctx context.Context, record *models.EnergyRecord) error
 	GetRecords(ctx context.Context) ([]models.EnergyRecord, error)
 }
+
+var ErrRecordNotFound = errors.New("energy record not found")
 
 type EnergyRecordRepository struct {
 	DB *sql.DB
@@ -30,7 +32,7 @@ func (r *EnergyRecordRepository) AddRecord(ctx context.Context, record *models.E
 	return nil
 }
 
-func (r *EnergyRecordRepository) GetByIdRecord(ctx context.Context, id string) (*models.EnergyRecord, error) {
+func (r *EnergyRecordRepository) GetByIdRecord(ctx context.Context, id int) (*models.EnergyRecord, error) {
 	record := &models.EnergyRecord{}
 	query := `SELECT id, date, usage, device, duration FROM energy_records WHERE id = $1`
 
@@ -38,14 +40,14 @@ func (r *EnergyRecordRepository) GetByIdRecord(ctx context.Context, id string) (
 		Scan(&record.ID, &record.Date, &record.Usage, &record.Device, &record.Duration)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows
+			return nil, ErrRecordNotFound
 		}
 		return nil, fmt.Errorf("error retrieving record: %w", err)
 	}
 	return record, nil
 }
 
-func (r *EnergyRecordRepository) DeleteRecord(ctx context.Context, id string) error {
+func (r *EnergyRecordRepository) DeleteRecord(ctx context.Context, id int) error {
 	query := `DELETE FROM energy_records WHERE id = $1`
 	result, err := r.DB.ExecContext(ctx, query, id)
 	if err != nil {
@@ -58,29 +60,21 @@ func (r *EnergyRecordRepository) DeleteRecord(ctx context.Context, id string) er
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("record with ID %s not found", id)
+		return ErrRecordNotFound
 	}
 
 	return nil
 }
 
 func (r *EnergyRecordRepository) UpdateRecord(ctx context.Context, record *models.EnergyRecord) error {
-	query := `UPDATE energy_records SET usage=$1, device=$2, duration=$3 WHERE id=$4`
-	result, err := r.DB.ExecContext(ctx, query,
-		record.Usage, record.Device, record.Duration, record.ID)
+	query := `UPDATE energy_records SET usage=$1, device=$2, duration=$3 WHERE id=$4 RETURNING date`
+	err := r.DB.QueryRowContext(ctx, query, record.Usage, record.Device, record.Duration, record.ID).Scan(&record.Date)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrRecordNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("error updating record: %w", err)
+		return fmt.Errorf("update record: %w", err)
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("error checking rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("record with ID %d not found", record.ID)
-	}
-
 	return nil
 }
 

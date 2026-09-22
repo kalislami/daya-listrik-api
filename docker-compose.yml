@@ -1,43 +1,36 @@
-version: '3.8'
-
 services:
-  # Layanan untuk PostgreSQL
   db:
     image: postgres:14-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: db_daya_listrik
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env or the environment}
+      POSTGRES_DB: ${DB_NAME:-db_daya_listrik}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
-    networks:
-      - app-network
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # Layanan untuk aplikasi Go
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     environment:
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      DB_HOST: ${DB_HOST}
-      PREFORK_ENABLED: ${PREFORK_ENABLED}
+      PORT: "8080"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env or the environment}
+      DB_NAME: ${DB_NAME:-db_daya_listrik}
+      DB_SSLMODE: disable
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     ports:
       - "8080:8080"
     depends_on:
-      - db
-    networks:
-      - app-network
+      db:
+        condition: service_healthy
 
-# Volume untuk menyimpan data PostgreSQL
 volumes:
   postgres_data:
-
-# Jaringan untuk menghubungkan layanan
-networks:
-  app-network:
-    driver: bridge

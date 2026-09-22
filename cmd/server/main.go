@@ -1,48 +1,84 @@
 package main
 
 import (
+	"context"
+	"daya-listrik-api/internal/config"
 	"daya-listrik-api/internal/db"
 	"daya-listrik-api/internal/handlers"
 	"daya-listrik-api/internal/repository"
+	"errors"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 func main() {
-	// Koneksi DB
-	dbConn, err := db.Connect()
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	c, err := config.Load()
 	if err != nil {
-		log.Fatal("Database connection error: ", err)
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	dbConn, err := db.Connect(ctx, c)
+	if err != nil {
+		return err
 	}
 	defer dbConn.Close()
+	log.Print("database connection established")
+	if err := db.RunMigrations(dbConn); err != nil {
+		return err
+	}
+	log.Print("database migrations applied")
 
-	// Inisialisasi Fiber
 	app := fiber.New(fiber.Config{
-		Prefork: os.Getenv("PREFORK_ENABLED") == "true", // seperti cluster di nodeJS, untuk memaksimalkan penggunaan core CPU
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	})
-
-	// Middleware CORS
+	app.Use(recover.New())
+	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders:     "Content-Type",
-		AllowCredentials: true,
+		AllowOrigins: c.CORSOrigins,
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Content-Type",
 	}))
+	app.Use(swagger.New(swagger.Config{FilePath: "./docs/openapi.yaml", Path: "swagger", Title: "Daya Listrik API"}))
+	handlers.InitializeRoutes(app, &handlers.EnergyRecordHandler{Repo: &repository.EnergyRecordRepository{DB: dbConn}})
 
-	// Inisialisasi repository
-	repo := &repository.EnergyRecordRepository{DB: dbConn}
-
-	// Bungkus repository ke handler
-	handler := &handlers.EnergyRecordHandler{Repo: repo}
-
-	// Daftarkan routes (ubah InitializeRoutes agar support Fiber)
-	handlers.InitializeRoutes(app, handler)
-
-	// Start server
-	addr := os.Getenv("PORT")
-	log.Printf("Server is running on http://localhost%s\n", addr)
-	log.Fatal(app.Listen(addr))
+	listenErr := make(chan error, 1)
+	go func() { listenErr <- app.Listen(":" + c.ServerPort) }()
+	log.Printf("server listening on port %s", c.ServerPort)
+	select {
+	case err := <-listenErr:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		log.Print("shutting down server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := app.ShutdownWithContext(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
+		if err := <-listenErr; err != nil {
+			return err
+		}
+	}
+	log.Print("server stopped; closing database")
+	return nil
 }

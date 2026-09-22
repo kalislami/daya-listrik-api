@@ -1,112 +1,87 @@
-# Web API - Pencatatan Daya Listrik Rumah Tangga
+# Daya Listrik API
 
-This web API provides services for recording electrical power in the house, what devices are there and how much power. This API was built using Go and PostgreSQL as the database.
+## Overview
 
-## Key Features
-- Store device data and electrical power
-- Displays device data
-- Provides an endpoint to search for device data by ID
-- Add, update and delete device data
+Daya Listrik API is a RESTful backend service built with Go and Fiber for managing household electricity usage records, using PostgreSQL and raw SQL persistence. It stores a device name, a positive usage value, a positive duration value, and a server generated creation date. The original contract does not define units for `usage` or `duration`, so this API preserves those field names without guessing units.
 
-## Technologies Used
-- **Go (Golang)** - The programming language used for the backend API.
-- **PostgreSQL** - Relational database used to store energy data.
-- **github/lib/pq** - PostgreSQL Driver for Go. 
+## Features
 
-## Prerequisites
-Before running the API, make sure you have installed the following:
-- [Go](https://go.dev/doc/install)
-- [PostgreSQL](https://www.postgresql.org/download/) or use [Docker](https://docs.docker.com/get-started/get-docker/) to running PosgreSQL service.
+Energy record CRUD, PostgreSQL persistence, parameterized raw SQL, request validation, structured errors, versioned migrations, OpenAPI documentation, automated tests, Docker support, and graceful shutdown.
 
-## Installation
+## Architecture
 
-**Follow these steps to set up this project locally:**
+```mermaid
+flowchart TD
+    Client --> FiberRouter[Fiber Router] --> Middleware --> Handler --> RepositoryInterface[Repository Interface] --> PostgreSQLRepository[PostgreSQL Repository] --> DatabaseSQL[database/sql] --> PostgreSQL
+```
 
-   ```bash
-   git clone https://github.com/kalislami/daya-listrik-api.git
-   cd daya-listrik-api
-   go mod tidy
-   ```
+Handlers own HTTP validation and status mapping. The repository owns SQL and persistence errors. A service layer is intentionally absent because the current domain is straightforward CRUD.
 
-## Directory Structure
-#### /daya-listrik-api
-├── /cmd/server/main.go => Contains the main code to run the HTTP server.      
-│    
-├── /internal   
-│   ├── /handlers   
-│   │   └── energy_records.go => Handles the logic for HTTP requests.   
-│   ├── /models   
-│   │   └── energy_record.go => Contains data structures and types used in the application.   
-│   ├── /repository   
-│   │   └── energy_record_repository.go => Contains code to interact with the database.   
-│   └── /db/postgres.go => Contains the configuration for the PostgreSQL database connection.      
-│       
-├── /tests   
-│   ├── api_test.go => Contains unit test code for the API.   
-│   ├── api_benchmark_test.go => Contains code to benchmark the API.   
-│   ├── mock.go => Mocks the repository for unit tests.   
-├── /migrations => Scripts for database migration if needed.   
-├── go.mod   
-└── go.sum   
+## Tech Stack
 
-## Running Benchmark
-**Run the command below, and it will display benchmark result:**
-
-   ```bash
-   #run all benchmark
-   go test -v -bench . ./tests -run=^$
-
-   #run spesific benchmark
-   go test -v -bench=benchmark_func_name ./tests -run=^$
-   ```
-## Running Unit Test Coverage
-**Run the command below, and it will display unit test result:**
-   ```bash
-   #run all unit-test
-   go test ./...
-
-   #run spesific unit-test
-   go test -v ./internal/package_name -run=unit_test_func_name
-
-   #generate coverage file
-   go-acc --ignore=cmd/server,internal/db,internal/models,internal/repository/mocks,tests -o coverage.out ./...
-
-   #generate coverage file.html
-   go tool cover "-html=coverage.out" "-o=coverage.html"
-   ```
+Go 1.24, Fiber v2, PostgreSQL, `database/sql`, `lib/pq`, raw SQL, `golang-migrate`, Fiber Swagger middleware, `testify`, `go-sqlmock`, and Docker.
 
 ## API Endpoints
-#### The list of API endpoints can be checked in the Postman collection in this repository.
 
-## Running the Application
+| Method | Route | Success |
+| --- | --- | --- |
+| GET | `/api/records` | 200, JSON array |
+| GET | `/api/records/{id}` | 200, record |
+| POST | `/api/records` | 201, created record |
+| PUT | `/api/records/{id}` | 200, updated record |
+| DELETE | `/api/records/{id}` | 204, empty body |
 
-#### 1. Manually
-
-- **Make sure there is a service connection to PosgreSQL.**
-- **Create .env file, an example is in the env.example file in this respository**
-
-- **Run the command below:**
-
-```bash
-go run cmd/server/main.go
-   ```
-- **The API can be accessed at localhost:8080.**
-
-#### 2. Using Docker
-
-- **Ensure Docker is installed.**
-- **Run the following commands:**
+Example create request:
 
 ```bash
-docker compose up -d
-   ```
-- **The API can be accessed at localhost:8080.**
+curl -X POST http://localhost:8080/api/records -H "Content-Type: application/json" -d '{"device":"Air Conditioner","usage":100,"duration":2}'
+```
 
-## Licence
-#### This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+`device` is trimmed and limited to 100 characters; `usage` and `duration` must be greater than zero. PUT replaces all three editable fields. `id` and `date` are managed by the server.
 
-## Contributing
-#### Please fork the repo and submit pull requests for contributions.
+## Error Handling
 
-## Contact
-#### For questions, contact me at [email](mailto:kamalgoritm@gmail.com).
+Invalid input returns 400, missing records return 404, and unexpected failures return 500 without database details. For example:
+
+```json
+{"error":{"code":"RECORD_NOT_FOUND","message":"Energy record not found"}}
+```
+
+## Getting Started
+
+Prerequisites: Go 1.24 and PostgreSQL, or Docker with Compose.
+
+```bash
+git clone https://github.com/kalislami/daya-listrik-api.git
+cd daya-listrik-api
+cp .env.example .env
+```
+
+Set `DB_PASSWORD` and other values for your local database in `.env`, then run `go run ./cmd/server`. The app also works with environment variables alone; `.env` is optional. `PORT` defaults to 8080, `DB_PORT` to 5432, `DB_SSLMODE` to `disable`, and `CORS_ALLOWED_ORIGINS` to `http://localhost:5173`. Set `DB_SSLMODE` appropriately in deployed environments.
+
+For Docker, set `DB_PASSWORD` in your environment or `.env`, then run `docker compose up --build`. Compose waits for PostgreSQL readiness. The app verifies the connection before starting HTTP and fails startup when connection or migration fails.
+
+## Database Migration
+
+On startup, `golang-migrate` applies numbered SQL migrations embedded in the binary and tracks the applied version in PostgreSQL. Already applied migrations do not run again. Migration failure stops startup. The first migration also backfills nullable `duration` values from older installations to `1` before enforcing `NOT NULL`. Add new changes as paired `migrations/00000N_name.up.sql` and `.down.sql` files; do not edit an applied migration. The down migration for the initial table drops its data, so review before using it manually.
+
+## API Documentation
+
+Open the Swagger UI at `http://localhost:8080/swagger` or read [the OpenAPI source](docs/openapi.yaml). Edit that YAML directly when the API contract changes; there is no generated file or generation command. The [Postman collection](daya-listrik.postman_collection.json) is an optional client example.
+
+## Testing
+
+```bash
+go fmt ./...
+go vet ./...
+go test ./...
+go test -bench . ./tests -run=^$
+```
+
+Handler tests cover valid and invalid requests. Repository tests use SQLMock to verify raw SQL, parameters, scan results, missing rows, and database failures.
+
+## Design Decisions
+
+Fiber handles HTTP and middleware. `database/sql` and raw SQL make database interactions explicit. The repository interface allows handler tests without PostgreSQL. The project uses no service layer because it currently has no complex business workflow.
+
+Licensed under [MIT](LICENSE).
